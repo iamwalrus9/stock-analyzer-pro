@@ -55,6 +55,17 @@ def scan_market(tickers, indicators, get_signals, run_backtest, validity, hold, 
                 s,m,a,combined=get_signals(d,validity)
                 t,eq=run_backtest(d,combined,hold,fee)
                 last=d.iloc[-1]
+                benchmark=(d.Close/d.Close.iloc[0])
+                strategy_return=(float(eq.iloc[-1])-1)*100
+                strategy_mdd=float((eq/eq.cummax()-1).min()*100)
+                benchmark_return=(float(benchmark.iloc[-1])-1)*100
+                benchmark_mdd=float((benchmark/benchmark.cummax()-1).min()*100)
+                yearly=t.copy()
+                if len(yearly):
+                    yearly['연도']=pd.to_datetime(yearly['매도일']).dt.year
+                    yearly_counts=yearly.groupby('연도').size().to_dict()
+                else:
+                    yearly_counts={}
                 recent=combined.tail(5)
                 dates=d.index[combined.fillna(False)]
                 latest=str(dates[-1].date()) if len(dates) else '없음'
@@ -67,7 +78,12 @@ def scan_market(tickers, indicators, get_signals, run_backtest, validity, hold, 
                              '3중 신호': '현재 충족' if bool(combined.iloc[-1]) else ('최근 5일 발생' if bool(recent.any()) else '없음'),
                              '점수':score,'조건 충족':sum(flags),'스토캐스틱': '✓' if flags[0] else '—',
                              'MACD':'✓' if flags[1] else '—','ADX':'✓' if flags[2] else '—',
-                             '과거 신호일 수':int(combined.sum()),'완료 거래':len(t),
+                             '과거 신호일 수':int(combined.sum()),'완료 거래':len(t),'전략 누적 수익률(%)':round(strategy_return,2),
+                             '전략 MDD(%)':round(strategy_mdd,2),'매수보유 수익률(%)':round(benchmark_return,2),
+                             '매수보유 MDD(%)':round(benchmark_mdd,2),
+                             '상승장 거래':int((t['장세']=='상승 추세').sum()) if len(t) else 0,
+                             '하락장 거래':int((t['장세']=='하락 추세').sum()) if len(t) else 0,
+                             '연도별 거래수':str(yearly_counts),
                              '승률(%)':round(float((t['수익률(%)']>0).mean()*100),1) if len(t) else np.nan,
                              '평균 거래 수익률(%)':round(float(t['수익률(%)'].mean()),2) if len(t) else np.nan,
                              '마지막 신호일':latest,'신호 경과 거래일':age if age is not None else np.nan})
@@ -75,6 +91,12 @@ def scan_market(tickers, indicators, get_signals, run_backtest, validity, hold, 
                 failures.append({'티커':ticker,'오류':str(exc)[:110]})
         if progress: progress.progress((gi+1)/len(groups),text=f'종목 분석 {min((gi+1)*10,len(tickers))}/{len(tickers)}')
     return pd.DataFrame(rows),pd.DataFrame(failures)
+
+def wilson_lower(p,n,z=1.96):
+    if n<=0 or pd.isna(p): return np.nan
+    center=p+z*z/(2*n)
+    spread=z*np.sqrt((p*(1-p)+z*z/(4*n))/n)
+    return max(0,(center-spread)/(1+z*z/n))
 
 def render_scanner(indicators,get_signals,run_backtest,validity,hold,fee,oversold,adx_level):
     st.subheader('🇺🇸 🇰🇷 한미 주식 3중 신호 스캐너')
@@ -117,6 +139,46 @@ def render_scanner(indicators,get_signals,run_backtest,validity,hold,fee,oversol
         st.caption('점수 = 현재 스토캐스틱/MACD/ADX 조건별 30점 + +DI 우세 5점 + 200일선 위 5점. 최대 100점. 매수 추천이나 성공 확률이 아닙니다.')
         st.markdown('#### ③ 과거 신호 발생 및 백테스트 종목')
         st.dataframe(result.sort_values(['과거 신호일 수','완료 거래'],ascending=False),use_container_width=True,hide_index=True)
+        st.markdown('#### ④ 보수형 전략 백테스트 신뢰성 랭킹')
+        min_trades=st.select_slider('최소 완료 거래 횟수',options=[1,3,5,10,20],value=5,key='scanner_min_trades')
+        eligible=result[result['완료 거래']>=min_trades].copy()
+        if eligible.empty:
+            st.info('선택한 최소 거래 횟수를 충족하는 종목이 없습니다. 표본 기준을 낮춰 확인할 수 있습니다.')
+        else:
+            eligible['승률 신뢰하한(%)']=eligible.apply(lambda r: wilson_lower(r['승률(%)']/100,int(r['완료 거래']))*100,axis=1).round(1)
+            eligible['수익/낙폭 비율']=eligible['전략 누적 수익률(%)'] / eligible['전략 MDD(%)'].abs().replace(0,np.nan)
+            st.caption('승률 신뢰하한은 독립적인 거래를 가정한 Wilson 95% 하한의 참고값입니다. 거래의 상관관계 때문에 실제 신뢰도를 과대평가할 수 있습니다.')
+            show=['시장','종목명(영문)','종목명(한국어)','티커','완료 거래','승률(%)','승률 신뢰하한(%)','평균 거래 수익률(%)','전략 누적 수익률(%)','전략 MDD(%)','매수보유 수익률(%)','매수보유 MDD(%)']
+            left,right=st.columns(2)
+            with left:
+                st.markdown('**승률 신뢰하한 순위**')
+                st.dataframe(eligible.sort_values(['승률 신뢰하한(%)','완료 거래'],ascending=False)[show],hide_index=True,use_container_width=True)
+            with right:
+                st.markdown('**전략 누적 수익률 순위 (MDD 병기)**')
+                st.dataframe(eligible.sort_values('전략 누적 수익률(%)',ascending=False)[show],hide_index=True,use_container_width=True)
+            st.markdown('**미국·한국 시장별 비교 (종목별 평균, 동일가중)**')
+            comparison=eligible.groupby('시장').agg(종목수=('티커','count'),총완료거래=('완료 거래','sum'),평균승률=('승률(%)','mean'),평균거래수익률=('평균 거래 수익률(%)','mean'),평균전략누적수익률=('전략 누적 수익률(%)','mean'),평균전략MDD=('전략 MDD(%)','mean')).round(2)
+            st.dataframe(comparison,use_container_width=True)
+            st.caption('시장별 수치는 종목별 결과의 단순 평균이며 실제 통합 포트폴리오 성과가 아닙니다. 상장폐지 종목 누락에 따른 생존 편향이 존재합니다.')
+        st.markdown('#### ⑤ 개별 종목 거래 내역 및 연도별 결과')
+        choice=st.selectbox('상세 분석 종목 선택',result['티커'].tolist(),format_func=lambda x: f"{display_names(x)[0]} ({x})",key='scanner_detail')
+        if st.button('선택 종목 거래 내역 계산',key='scanner_detail_button'):
+            try:
+                detail_batch=fetch_batch((choice,))
+                detail_d=indicators(extract_frame(detail_batch,choice),oversold,adx_level)
+                _,_,_,detail_combined=get_signals(detail_d,validity)
+                detail_trades,detail_eq=run_backtest(detail_d,detail_combined,hold,fee)
+                if detail_trades.empty:
+                    st.info('이 종목은 완료된 거래가 없습니다.')
+                else:
+                    detail_trades['매도연도']=pd.to_datetime(detail_trades['매도일']).dt.year
+                    annual=detail_trades.groupby('매도연도')['수익률(%)'].agg(거래수='count',승률=lambda x:round((x>0).mean()*100,1),평균거래수익률='mean').round(2)
+                    st.dataframe(annual,use_container_width=True)
+                    st.dataframe(detail_trades.iloc[::-1],hide_index=True,use_container_width=True)
+                    st.download_button('선택 종목 거래 CSV',detail_trades.to_csv(index=False).encode('utf-8-sig'),file_name=f'{choice}_trades.csv',mime='text/csv')
+            except Exception as exc:
+                st.error(f'상세 분석 실패: {exc}')
+        st.warning('검증 주의: 거래별 다음날 시가 체결 및 편도 비용 가정을 사용합니다. 미완료 거래, 세금, 실제 슬리피지, 유동성은 완전히 반영되지 않습니다. 같은 종목의 반복 거래는 독립 표본이 아니며, 과거 성과는 미래 수익을 예측하지 않습니다.')
         st.download_button('전체 결과 CSV 저장',result.to_csv(index=False).encode('utf-8-sig'),'mystockquant_scan.csv','text/csv')
     if not failed.empty:
         with st.expander(f'데이터 실패 종목 {len(failed)}개 보기'):
