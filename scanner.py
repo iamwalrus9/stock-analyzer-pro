@@ -6,6 +6,18 @@ import yfinance as yf
 US = '''AAPL MSFT NVDA AMZN GOOGL META TSLA AVGO BRK-B JPM V MA UNH XOM COST WMT PG JNJ HD ABBV BAC KO PEP CRM ORCL AMD NFLX ADBE CSCO IBM INTC QCOM TXN AMAT MU LLY MRK CAT GE BA DIS NKE MCD SBUX GS MS C CVX COP UBER PLTR'''.split()
 KR = '''005930.KS 000660.KS 005380.KS 000270.KS 035420.KS 035720.KS 051910.KS 006400.KS 207940.KS 068270.KS 005490.KS 012330.KS 028260.KS 105560.KS 055550.KS 086790.KS 032830.KS 000810.KS 003550.KS 066570.KS 034730.KS 096770.KS 017670.KS 030200.KS 015760.KS 009150.KS 018260.KS 010130.KS 011200.KS 003670.KS 247540.KQ 086520.KQ 196170.KQ 091990.KQ 263750.KQ 293490.KQ 041510.KQ 035900.KQ 122870.KQ 095340.KQ 058470.KQ 039030.KQ 214150.KQ 067310.KQ 036570.KS 259960.KS 352820.KS 373220.KS 402340.KS 012450.KS'''.split()
 
+# Display names are labels, not trading signals. Unknown tickers retain their symbols.
+US_NAMES = dict(zip(US, ["Apple","Microsoft","NVIDIA","Amazon","Alphabet","Meta Platforms","Tesla","Broadcom","Berkshire Hathaway","JPMorgan Chase","Visa","Mastercard","UnitedHealth Group","Exxon Mobil","Costco","Walmart","Procter & Gamble","Johnson & Johnson","Home Depot","AbbVie","Bank of America","Coca-Cola","PepsiCo","Salesforce","Oracle","Advanced Micro Devices","Netflix","Adobe","Cisco Systems","IBM","Intel","Qualcomm","Texas Instruments","Applied Materials","Micron Technology","Eli Lilly","Merck & Co.","Caterpillar","GE Aerospace","Boeing","Walt Disney","Nike","McDonald's","Starbucks","Goldman Sachs","Morgan Stanley","Citigroup","Chevron","ConocoPhillips","Uber Technologies","Palantir Technologies"]))
+KR_NAMES_KO = dict(zip(KR, ["삼성전자","SK하이닉스","현대자동차","기아","NAVER","카카오","LG화학","삼성SDI","삼성바이오로직스","셀트리온","POSCO홀딩스","현대모비스","삼성물산","KB금융","신한지주","하나금융지주","삼성생명","삼성화재","LG","LG전자","SK","SK이노베이션","SK텔레콤","KT","한국전력","삼성전기","삼성에스디에스","고려아연","HMM","포스코퓨처엠","에코프로비엠","에코프로","알테오젠","셀트리온헬스케어","펄어비스","카카오게임즈","에스엠","JYP Ent.","와이지엔터테인먼트","ISC","리노공업","이오테크닉스","클래시스","에코프로에이치엔","엔씨소프트","크래프톤","하이브","LG에너지솔루션","두산에너빌리티","한화에어로스페이스"]))
+KR_NAMES_EN = dict(zip(KR, ["Samsung Electronics","SK hynix","Hyundai Motor","Kia","NAVER","Kakao","LG Chem","Samsung SDI","Samsung Biologics","Celltrion","POSCO Holdings","Hyundai Mobis","Samsung C&T","KB Financial Group","Shinhan Financial Group","Hana Financial Group","Samsung Life Insurance","Samsung Fire & Marine Insurance","LG Corp.","LG Electronics","SK Inc.","SK Innovation","SK Telecom","KT Corp.","Korea Electric Power","Samsung Electro-Mechanics","Samsung SDS","Korea Zinc","HMM","POSCO Future M","Ecopro BM","Ecopro","Alteogen","Celltrion Healthcare","Pearl Abyss","Kakao Games","SM Entertainment","JYP Entertainment","YG Entertainment","ISC","LEENO Industrial","EO Technics","Classys","Ecopro HN","NCSoft","Krafton","HYBE","LG Energy Solution","Doosan Enerbility","Hanwha Aerospace"]))
+
+def display_names(ticker):
+    if ticker in US_NAMES:
+        return US_NAMES[ticker], ''
+    if ticker in KR_NAMES_EN:
+        return KR_NAMES_EN[ticker], KR_NAMES_KO[ticker]
+    return ticker, ''
+
 @st.cache_data(ttl=21600, show_spinner=False)
 def fetch_batch(tickers, period='10y'):
     # Cached as a whole batch to avoid one HTTP call per ticker on every rerun.
@@ -50,7 +62,8 @@ def scan_market(tickers, indicators, get_signals, run_backtest, validity, hold, 
                 # Scoring is a transparent heuristic, NOT a predicted return or probability.
                 flags=[bool(s.iloc[-1]),bool(m.iloc[-1]),bool(a.iloc[-1])]
                 score=30*sum(flags)+5*bool(last.plusDI>last.minusDI)+5*bool(last.Close>last.SMA200 if pd.notna(last.SMA200) else False)
-                rows.append({'시장':'미국' if ticker in US else '한국','티커':ticker,'최종 데이터일':str(d.index[-1].date()),
+                english_name, korean_name = display_names(ticker)
+                rows.append({'시장':'미국' if ticker in US else '한국','종목명(영문)':english_name,'종목명(한국어)':korean_name,'티커':ticker,'최종 데이터일':str(d.index[-1].date()),
                              '3중 신호': '현재 충족' if bool(combined.iloc[-1]) else ('최근 5일 발생' if bool(recent.any()) else '없음'),
                              '점수':score,'조건 충족':sum(flags),'스토캐스틱': '✓' if flags[0] else '—',
                              'MACD':'✓' if flags[1] else '—','ADX':'✓' if flags[2] else '—',
