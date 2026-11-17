@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
+from scanner import render_scanner
 
 st.set_page_config(page_title='MyStockQuant', page_icon='📈', layout='wide')
 st.title('📈 MyStockQuant')
@@ -133,7 +134,7 @@ labels=[('스토캐스틱',bool(ss.iloc[-1]),f"%K {fmt(last.K)} / %D {fmt(last.D
         ('MACD',bool(ms.iloc[-1]),f"MACD {fmt(last.MACD)} / Signal {fmt(last.MACD_signal)}",f'최근 {validity}거래일 내 상향교차',last_event_date(d.macd_event)),
         ('ADX',bool(ads.iloc[-1]),f"ADX {fmt(last.ADX)} / +DI {fmt(last.plusDI)} / -DI {fmt(last.minusDI)}",f'ADX ≥ {adx_level}, 상승 중, +DI > -DI',last_event_date(d.adx_event))]
 
-t1,t2,t3=st.tabs(['🧭 신호 대시보드','📉 기술적 분석','🧪 백테스트'])
+t1,t2,t3,t4=st.tabs(['🧭 신호 대시보드','📉 기술적 분석','🧪 백테스트','🏆 한미 종목 랭킹'])
 with t1:
     st.subheader('현재 3중 매수 후보 상태')
     cols=st.columns(3)
@@ -217,3 +218,6 @@ with t3:
         st.info('현재 조건에서는 완료된 거래가 없습니다. 신호 조건을 완화해 비교해 보세요.')
     st.caption('신호는 종가 확정 후 확인하며, 다음 거래일 시가에 진입하고 20거래일 뒤 시가에 청산합니다. 거래비용은 매수·매도 각각 반영합니다. 마지막 미완료 거래는 제외합니다.')
     st.warning('연구용 백테스트입니다. Yahoo Finance의 자동 조정 OHLC를 사용하므로 실제 체결가와 차이가 있습니다. 세금·슬리피지·유동성·배당 현금흐름·데이터 오류를 완전히 반영하지 않습니다. 수익률은 미래 성과를 보장하지 않습니다.')
+
+with t4:
+    render_scanner(indicators,get_signals,run_backtest,validity,hold,fee,oversold,adx_level)
