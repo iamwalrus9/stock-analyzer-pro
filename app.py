@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 from scanner import render_scanner
+from stoch_compare import render_stoch_comparison
 
 st.set_page_config(page_title='MyStockQuant', page_icon='📈', layout='wide')
 st.title('📈 MyStockQuant')
@@ -134,7 +135,7 @@ labels=[('스토캐스틱',bool(ss.iloc[-1]),f"%K {fmt(last.K)} / %D {fmt(last.D
         ('MACD',bool(ms.iloc[-1]),f"MACD {fmt(last.MACD)} / Signal {fmt(last.MACD_signal)}",f'최근 {validity}거래일 내 상향교차',last_event_date(d.macd_event)),
         ('ADX',bool(ads.iloc[-1]),f"ADX {fmt(last.ADX)} / +DI {fmt(last.plusDI)} / -DI {fmt(last.minusDI)}",f'ADX ≥ {adx_level}, 상승 중, +DI > -DI',last_event_date(d.adx_event))]
 
-t1,t2,t3,t4=st.tabs(['🧭 신호 대시보드','📉 기술적 분석','🧪 백테스트','🏆 한미 종목 랭킹'])
+t1,t2,t3,t4,t5=st.tabs(['🧭 신호 대시보드','📉 기술적 분석','🧪 백테스트','🏆 한미 종목 랭킹','📊 스토캐스틱 3중 비교'])
 with t1:
     st.subheader('현재 3중 매수 후보 상태')
     cols=st.columns(3)
@@ -221,3 +222,6 @@ with t3:
 
 with t4:
     render_scanner(indicators,get_signals,run_backtest,validity,hold,fee,oversold,adx_level)
+
+with t5:
+    render_stoch_comparison()
